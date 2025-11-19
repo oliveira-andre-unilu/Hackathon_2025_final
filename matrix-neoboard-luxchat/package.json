@@ -1,0 +1,85 @@
+{
+  "name": "root",
+  "private": true,
+  "workspaces": [
+    "matrix-neoboard-widget",
+    "packages/*"
+  ],
+  "type": "module",
+  "devDependencies": {
+    "@changesets/cli": "^2.28.1",
+    "@eslint/compat": "^1.2.7",
+    "@eslint/js": "^9.21.0",
+    "depcheck": "^1.4.7",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-notice": "^1.0.0",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-react": "^7.37.4",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "eslint-plugin-testing-library": "^7.1.1",
+    "eslint-plugin-vitest": "^0.5.4",
+    "husky": "^9.1.7",
+    "i18next": "^25.2.1",
+    "lint-staged": "^15.4.3",
+    "prettier": "^3.5.2",
+    "prettier-plugin-organize-imports": "^4.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^15.5.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.25.0",
+    "vitest": "^2.1.9",
+    "yarn-deduplicate": "^6.0.2"
+  },
+  "resolutions": {
+    "**/cross-spawn": "^7.0.5",
+    "**/esbuild": "^0.25.0",
+    "**/nanoid": "^3.3.8",
+    "**/nth-check": "^2.0.1",
+    "**/resolve-url-loader": "^5.0.0",
+    "**/rxjs": "^7.8.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "yarn": ">=1.22.1 <2.0.0"
+  },
+  "scripts": {
+    "docker:build": "yarn workspace @nordeck/matrix-neoboard-widget docker:build",
+    "dev": "yarn workspace @nordeck/matrix-neoboard-widget dev",
+    "dev:https": "yarn workspace @nordeck/matrix-neoboard-widget dev:https",
+    "build": "yarn workspaces run build",
+    "test": "vitest",
+    "test:all": "vitest run --coverage",
+    "tsc": "yarn workspaces run tsc",
+    "deduplicate": "yarn-deduplicate",
+    "depcheck": "yarn depcheck:root && yarn workspaces run depcheck",
+    "depcheck:root": "depcheck --ignores=prettier-plugin-organize-imports,@changesets/cli,react,react-dom,react-i18next,i18next",
+    "lint": "yarn workspaces run lint --max-warnings=0",
+    "prepare": "husky",
+    "translate": "yarn workspaces run translate",
+    "prettier:check": "prettier --check .",
+    "prettier:write": "prettier --write .",
+    "generate-disclaimer": "yarn workspaces run generate-disclaimer",
+    "clean": "yarn run clean:cache && yarn run clean:build",
+    "clean:cache": "rm -rf node_modules/.vite && yarn workspaces run clean:cache",
+    "clean:build": "yarn workspaces run clean:build"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx}": [
+      "yarn lint",
+      "bash -c \"yarn tsc --pretty\"",
+      "prettier --write"
+    ],
+    "*.{package.json,js,jsx,ts,tsx}": [
+      "bash -c \"yarn depcheck\""
+    ],
+    "*.{json,js,jsx,ts,tsx}": [
+      "bash -c \"yarn translate --ci --dry-run\""
+    ],
+    "*.{yaml,yml,json,md}": [
+      "prettier --write"
+    ]
+  },
+  "packageManager": "yarn@1.22.22+sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610"
+}
