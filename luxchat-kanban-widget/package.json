@@ -1,0 +1,29 @@
+{
+  "name": "luxchat-kanban-widget",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx"
+  },
+  "dependencies": {
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "matrix-js-sdk": "^34.0.0",
+    "matrix-files-sdk": "^3.1.0",
+    "@matrix-widget-toolkit/api": "^2.0.0",
+    "dayjs": "^1.11.13"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.0.0",
+    "eslint": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0"
+  }
+}
