@@ -1,0 +1,93 @@
+# This pipeline runs for every new tag. It will pull the docker container for
+# the commit hash of the tag, and will publish it as `:<tag-name>` and `latest`.
+name: Release Bot
+
+on:
+  push:
+    tags:
+      - '@nordeck/matrix-meetings-bot@*'
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    env:
+      DOCKER_IMAGE: ghcr.io/nordeck/matrix-meetings-bot
+    steps:
+      - name: Generate Docker metadata of the existing image
+        id: meta-existing-tag
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=sha,prefix=
+
+      - name: Generate Docker metadata of the new image
+        id: meta-new-tags
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=NeoDateFix Bot
+            org.opencontainers.image.description=A Matrix bot that creates rooms for meetings triggered by custom events from the NeoDateFix widget
+            org.opencontainers.image.vendor=Nordeck IT + Consulting GmbH
+          tags: |
+            type=match,pattern=@nordeck/matrix-meetings-bot@(.*),group=1
+
+      - name: Generate Dockerfile
+        env:
+          SOURCE_IMAGE: ${{ fromJSON(steps.meta-existing-tag.outputs.json).tags[0] }}
+        run: |
+          echo "FROM $SOURCE_IMAGE" > Dockerfile
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # @v3.7.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        id: build_and_push
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          context: .
+          tags: ${{ steps.meta-new-tags.outputs.tags }}
+          labels: ${{ steps.meta-new-tags.outputs.labels }}
+          platforms: linux/amd64,linux/arm64,linux/s390x
+
+      - name: Run Trivy to get an SBOM report of the container
+        env:
+          IMAGE_REF: ${{ env.DOCKER_IMAGE }}@${{ steps.build_and_push.outputs.digest }}
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          scan-type: 'image'
+          scanners: 'license'
+          format: 'spdx-json'
+          output: 'sbom.spdx.json'
+          image-ref: ${{ env.IMAGE_REF }}
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SBOM to release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.ref_name }}
+        run: |
+          gh release upload "$tag" sbom.spdx.json --repo="$GITHUB_REPOSITORY"
+
+      - name: Sign the images with GitHub OIDC Token
+        env:
+          DIGEST: ${{ steps.build_and_push.outputs.digest }}
+        run: cosign sign --yes "${DOCKER_IMAGE}@${DIGEST}"

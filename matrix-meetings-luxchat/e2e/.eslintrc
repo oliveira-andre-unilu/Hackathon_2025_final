@@ -1,0 +1,12 @@
+{
+  "rules": {
+    // False positive in the playwright tests
+    "testing-library/prefer-screen-queries": "off"
+  },
+  "extends": [
+    "plugin:playwright/playwright-test"
+  ],
+  "parserOptions": {
+    "warnOnUnsupportedTypeScriptVersion": false
+  }
+}

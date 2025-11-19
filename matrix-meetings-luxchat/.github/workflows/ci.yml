@@ -1,0 +1,420 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-widget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOCKER_IMAGE: ghcr.io/nordeck/matrix-meetings-widget
+    outputs:
+      docker-tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'yarn'
+
+      - name: yarn install
+        run: yarn install --frozen-lockfile
+
+      - name: prettier:check
+        run: yarn prettier:check
+
+      - name: depcheck
+        run: yarn depcheck
+
+      - name: type checking and declarations
+        run: yarn tsc
+
+      - name: Check Calendar Linting Rules
+        working-directory: ./packages/calendar/
+        run: yarn run lint
+
+      - name: Check Linting Rules
+        working-directory: ./matrix-meetings-widget/
+        run: yarn run lint
+
+      - name: check translations
+        working-directory: ./matrix-meetings-widget/
+        run: yarn translate --ci --dry-run
+
+      - name: test calendar
+        working-directory: ./packages/calendar/
+        run: yarn test:all
+
+      - name: test
+        working-directory: ./matrix-meetings-widget/
+        run: yarn test:all
+
+      - name: build
+        working-directory: ./matrix-meetings-widget/
+        run: yarn build
+
+      - name: generate disclaimer
+        working-directory: ./matrix-meetings-widget/
+        run: yarn generate-disclaimer
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: true
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=NeoDateFix Widget
+            org.opencontainers.image.description=A meetings widget for the Element messenger
+            org.opencontainers.image.vendor=Nordeck IT + Consulting GmbH
+          tags: |
+            type=sha,prefix=
+
+      - name: Docker build and push
+        uses: docker/build-push-action@v6
+        id: dockerBuild
+        with:
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request' && secrets.GH_APP_OS_APP_ID != '' }}
+          context: ./matrix-meetings-widget/
+          build-contexts: |
+            root=./
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64,linux/s390x
+          sbom: true
+          provenance: true
+
+      - name: Run Trivy to get an SBOM report of the container
+        if: ${{ success() && steps.dockerBuild.outputs.digest }}
+        env:
+          IMAGE_REF: ${{ env.DOCKER_IMAGE }}@${{ steps.dockerBuild.outputs.digest }}
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          scan-type: 'image'
+          scanners: 'license'
+          format: 'spdx-json'
+          output: 'matrix-meetings-widget.sbom.spdx.json'
+          image-ref: ${{ env.IMAGE_REF }}
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SBOM report as a build artifact
+        if: ${{ success() && steps.dockerBuild.outputs.digest }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-meetings-widget-sbom-spdx-report
+          path: 'matrix-meetings-widget.sbom.spdx.json'
+          retention-days: 30
+
+  build-bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DOCKER_IMAGE: ghcr.io/nordeck/matrix-meetings-bot
+    outputs:
+      docker-tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'yarn'
+
+      - name: yarn install
+        run: yarn install --frozen-lockfile
+
+      - name: prettier:check
+        run: yarn prettier:check
+
+      - name: depcheck
+        run: yarn depcheck
+
+      - name: type checking and declarations
+        run: yarn tsc
+
+      - name: Check Calendar Linting Rules
+        working-directory: ./packages/calendar/
+        run: yarn run lint
+
+      - name: Check Linting Rules
+        working-directory: ./matrix-meetings-bot/
+        run: yarn run lint
+
+      - name: check translations
+        working-directory: ./matrix-meetings-bot/
+        run: yarn translate --ci --dry-run
+
+      - name: test calendar
+        working-directory: ./packages/calendar/
+        run: yarn test:all
+
+      - name: test
+        working-directory: ./matrix-meetings-bot/
+        run: yarn test:all
+
+      - name: build
+        working-directory: ./matrix-meetings-bot/
+        run: yarn build
+
+      - name: generate disclaimer
+        working-directory: ./matrix-meetings-bot/
+        run: yarn generate-disclaimer
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        env:
+          DOCKER_METADATA_PR_HEAD_SHA: true
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          labels: |
+            org.opencontainers.image.title=NeoDateFix Bot
+            org.opencontainers.image.description=A Matrix bot that creates rooms for meetings triggered by custom events from the NeoDateFix widget
+            org.opencontainers.image.vendor=Nordeck IT + Consulting GmbH
+          tags: |
+            type=sha,prefix=
+
+      - name: Docker build and push
+        uses: docker/build-push-action@v6
+        id: dockerBuild
+        with:
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request' && secrets.GH_APP_OS_APP_ID != '' }}
+          context: .
+          file: matrix-meetings-bot/Dockerfile
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64,linux/s390x
+          sbom: true
+          provenance: true
+
+      - name: Run Trivy to get an SBOM report of the container
+        if: ${{ success() && steps.dockerBuild.outputs.digest }}
+        env:
+          IMAGE_REF: ${{ env.DOCKER_IMAGE }}@${{ steps.dockerBuild.outputs.digest }}
+        uses: aquasecurity/trivy-action@0.31.0
+        with:
+          scan-type: 'image'
+          scanners: 'license'
+          format: 'spdx-json'
+          output: 'matrix-meetings-bot.sbom.spdx.json'
+          image-ref: ${{ env.IMAGE_REF }}
+          github-pat: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload SBOM report as a build artifcat
+        if: ${{ success() && steps.dockerBuild.outputs.digest }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-meetings-bot-sbom-spdx-report
+          path: 'matrix-meetings-bot.sbom.spdx.json'
+          retention-days: 30
+
+  helm-lint-test:
+    runs-on: ubuntu-latest
+    needs:
+      - build-bot
+      - build-widget
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need main branch to diff against
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          check-latest: true
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+      - name: Check if Helm charts updated (run chart-testing list-changed)
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run chart-testing (lint)
+        if: steps.list-changed.outputs.changed == 'true'
+        # --validate-maintainers is disabled because it tries to resolve the name as GitHub user
+        run: ct lint --validate-maintainers=false --target-branch ${{ github.event.repository.default_branch }}
+      - name: Create kind cluster
+        if: steps.list-changed.outputs.changed == 'true'
+        uses: helm/kind-action@v1.10.0
+      - name: Prepare k8s cluster
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          kubectl create namespace matrix-meetings
+          # We require a running synapse for the bot to work
+          echo "Deploying synapse"
+          kubectl apply -f ./.github/synapse_deployment.yaml
+          # We require a password secret for the bot to work
+          echo "Deploying password secret"
+          kubectl apply -f ./.github/bot_secret.yaml
+      - name: Run chart-testing (install)
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          ct install --config=".github/k8s_config.yaml" --charts charts/matrix-meetings \
+          --target-branch ${{ github.event.repository.default_branch }} \
+          --helm-extra-set-args="--set=matrix-meetings-widget.image.tag=${{ needs.build-widget.outputs.docker-tag }} \
+          --set=matrix-meetings-bot.image.tag=${{ needs.build-bot.outputs.docker-tag }} \
+          -f .github/ci_values.yaml"
+
+  run-changesets:
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    timeout-minutes: 5
+    needs:
+      - build-widget
+      - build-bot
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # required for changesets
+          fetch-depth: '0'
+          # don't persist the credentials so the changesets action doesn't use the
+          # github actions token but the git token provided via environment variable
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'yarn'
+
+      - name: yarn install
+        run: yarn install --frozen-lockfile
+
+      - name: Generate GitHub token
+        id: generate_token
+        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a
+        with:
+          app_id: ${{ secrets.GH_APP_OS_APP_ID }}
+          private_key: ${{ secrets.GH_APP_OS_PRIVATE_KEY }}
+
+      - name: Create Release Pull Request or Publish Packages
+        uses: changesets/action@c8bada60c408975afd1a20b3db81d6eee6789308
+        with:
+          publish: yarn changeset tag
+        env:
+          GITHUB_TOKEN: ${{ steps.generate_token.outputs.token }}
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ['chromium', 'firefox', 'webkit']
+        # Webkit is currently to slow in CI and causes a lot of issues.
+        # Therefore we exclude it for now.
+        exclude:
+          - browser: firefox
+          - browser: webkit
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'yarn'
+
+      - name: yarn install
+        run: yarn install --frozen-lockfile
+
+      - name: build
+        run: yarn build
+
+      - name: generate disclaimer
+        run: yarn generate-disclaimer
+
+      - name: Docker build widget
+        uses: docker/build-push-action@v6
+        id: dockerBuildWidget
+        with:
+          context: ./matrix-meetings-widget/
+          build-contexts: |
+            root=./
+
+      - name: Docker build bot
+        uses: docker/build-push-action@v6
+        id: dockerBuildBot
+        with:
+          context: .
+          file: ./matrix-meetings-bot/Dockerfile
+          tags: ghcr.io/nordeck/matrix-meetings-bot:local
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run Playwright tests
+        env:
+          IMAGE_ID: ${{ steps.dockerBuildWidget.outputs.imageid }}
+          BOT_CONTAINER_IMAGE: ghcr.io/nordeck/matrix-meetings-bot:local
+        working-directory: ./e2e/
+        run: yarn playwright test --project=${{ matrix.browser }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: e2e/playwright-report/
+          retention-days: 7
+
+  deploy:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - build-widget
+      - build-bot
+      - e2e
+    steps:
+      - name: Generate GitHub token
+        id: generate_token
+        uses: tibdex/github-app-token@3beb63f4bd073e61482598c45c71c1019b59b73a # @v2.1.0
+        with:
+          app_id: ${{ secrets.GH_APP_OS_APP_ID }}
+          private_key: ${{ secrets.GH_APP_OS_PRIVATE_KEY }}
+
+      - name: Trigger Workflow
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.generate_token.outputs.token }}
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: 'nordeck',
+              repo: '${{ secrets.GITOPS_DEPLOY_REPOSITORY }}',
+              workflow_id: 'deployment.yml',
+              ref: 'main',
+              inputs: {
+                environment: '${{ secrets.GITOPS_DEPLOY_ENVIRONMENT}}',
+                application: 'matrix-meetings',
+                tag: '${{ github.sha }}'
+              }
+            })
